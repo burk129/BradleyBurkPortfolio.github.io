@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sack Leader Analysis</title>
+
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/seedrandom/3.0.5/seedrandom.min.js"></script>
+</head>
+
+<style>
+        body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+    padding-top: 80px;
+    background: #f5f7fa;
+}
+
+.bubble-container {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    flex-wrap: wrap;
+}
+
+.bubble-wrapper {
+    width: 260px;
+}
+
+.card {
+    width: 100%;
+    padding: 20px;
+    background: white;
+    border-radius: 10px;
+    border: 1px solid #ddd;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: 0.25s;
+}
+
+.card:hover {
+    background: #4a90e2;
+    color: white;
+    transform: translateY(-5px);
+    box-shadow: 0 8px 18px rgba(0,0,0,0.15);
+}
+
+.description {
+    margin-top: 12px;
+    font-size: 14px;
+    color: #444;
+}
+    </style>
+
+<body>
+
+    <h1>Analysis of the Top 3 Single-Season Sack Record Holders</h1>
+
+    <div class="bubble-container">
+
+    <div class="bubble-wrapper">
+        <button class="card" onclick="window.location.href='sackleaders/sackLeaders1.html'">
+            NFL Sack Performance vs. Opponent's Offensive Line Difficulty
+        </button>
+        <div class="description">
+            Demonstrates the dominance of a players performance by comparing the sacks record in a single game with the difficulty that they faced.
+        </div>
+    </div>
+
+    <div class="bubble-wrapper">
+        <button class="card" onclick="window.location.href='sackleaders/sackLeaders2.html'">
+            NFL Sack Peformance vs. Overall Successful Offensives
+        </button>
+        <div class="description">
+            Analyzes how a player performed against the top offenses versis bottom offenses in the league regarding 
+            points scored per game
+        </div>
+    </div>
+
+    <div class="bubble-wrapper">
+        <button class="card" onclick="window.location.href='sackleaders/sackLeaders3.html'">
+            NFL Sack Performance vs Season Average Time to Throw
+        </button>
+        <div class="description">
+            Demonstrates how a player performed when the opponent got rid of the ball quickly vs. holding it longer
+        </div>
+    </div>
+
+    </div>
+
+</body>
+
+</html>
