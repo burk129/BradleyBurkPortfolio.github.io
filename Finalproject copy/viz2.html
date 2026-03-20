@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<head>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="https://unpkg.com/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
+</head>
+<style>
+  .node rect {
+    fill-opacity: 0.9;
+    shape-rendering: crispEdges;
+  }
+  .node text {
+    font: 12px sans-serif;
+    pointer-events: none;
+  }
+  .link {
+    fill: none;
+  }
+  .header {
+    text-align: center
+  }
+  
+</style>
+<body>
+
+  <button id = "mainpage" onclick="window.location.href = 'mainpage.html'">Back to Main page</button>
+  
+  <div class="header">
+    <h1>Visualization 2</h1>
+  </div>
+
+<div style="display:flex; flex-direction:column; align-items:center; height:100vh;">
+  <!--Graph label-->
+<div class="label">
+        <h3>Sankey Graph</h3>
+      </div>
+  <!-- Graph + legend row -->
+  <div style="display:flex; align-items:flex-start; justify-content:center;">
+
+    <!-- Graph wrapper -->
+    <div style="display:flex; flex-direction:column; align-items:flex-start;">
+      
+      <!-- Dropdown aligned with SVG corner, outside border -->
+      <select id="donorSelect" style="margin-bottom:8px;">
+      </select>
+
+      
+      <!-- Scrollable graph container -->
+      <div id="graph-container" 
+           style="width:1000px; height:1000px; overflow-y:auto; border:1px solid #ccc;">
+        <svg id="chart" width="1000" height="1000"></svg>
+      </div>
+    </div>
+
+    <!-- Legend -->
+    <div id="legend" style="margin-left:20px;"></div>
+  </div>
+    <!--Graph label-->
+  <div class="label">
+    <h3>Network Graph</h3>
+  </div>
+      <!-- Graph row + wrapper -->
+  <div style="display:flex; align-items:flex-start; justify-content:center;">
+    <div style="display:flex; flex-direction:column; align-items:flex-start;">
+          <!-- Scrollable graph container -->
+      <div id="networkDiagram" style="width:1000px; height:1000px; overflow-y:auto; overflow-x: auto; border:1px solid #ccc; margin-top: 50px;">
+        <svg id="network" width="1000" height="1000"></svg>
+      </div>
+  </div>
+  <!-- Legend -->
+    <div id="networkLegend" style="margin-left:20px; margin-top: 50px;"></div>
+</div>
+</div>
+<script>
+  
+//sankey svg
+const sankeySvg = d3.select("#chart"),
+      width = +sankeySvg.attr("width"),
+      height = +sankeySvg.attr("height");
+
+const sankey = d3.sankey()
+    .nodeWidth(20)
+    .nodePadding(10)
+    .extent([[1, 1], [`${width}`, height - 6]]);
+
+const path = d3.sankeyLinkHorizontal();
+
+//network svg
+ var networkSvg = d3.select("#network")
+        .attr("width", width)
+        .attr("height", height)
+        .append("g")
+
+//read from csv:
+d3.csv("AidData.csv").then(data => {
+    let link, nodeRects, currentDonor
+  // Group
+  const grouped = d3.rollups(
+    data,
+    v => d3.sum(v, d => +d.commitment_amount_usd_constant_sum || 1),
+    d => d.donor,
+    d => d.coalesced_purpose_name,
+    d => d.recipient
+  );
+
+  // Flatten
+  const collapsed = [];
+  grouped.forEach(([donor, purposes]) => {
+    purposes.forEach(([purpose, recipients]) => {
+      recipients.forEach(([recipient, total]) => {
+        collapsed.push({ donor, purpose, recipient, amount: total });
+      });
+    });
+  });
+
+ //purpose colors
+  const color = d3.scaleOrdinal(d3.schemePaired);
+
+  // Get unique donors
+const donors = [...new Set(collapsed.map(d => d.donor))];
+
+//get top 10 purposes for all countries
+const purposeTotals = d3.rollup(
+  collapsed,
+  v => d3.sum(v, d => d.amount),
+  d => d.purpose
+);
+
+const topPurposes = Array.from(purposeTotals)
+  .sort((a, b) => d3.descending(a[1], b[1]))
+  .slice(0, 10)
+  .map(d => d[0]);
+
+const filteredData = collapsed.filter(
+  d => topPurposes.includes(d.purpose)
+);
+
+//call to build network
+buildNetwork(filteredData);
+
+// Create dropdown
+//placeholder
+d3.select("#donorSelect")
+  .append("option")
+  .attr("value", "")
+  .attr("disabled", true)   // prevent re-selecting
+  .attr("selected", true)   // show by default
+  .text("Country");
+
+// Populate dropdown
+d3.select("#donorSelect")
+  .selectAll("option.data-option")
+  .data(donors)
+  .join("option")
+    .attr("class","data-option")
+    .attr("value", d => d)
+    .text(d => d);
+
+buildSankey();
+function buildSankey(){
+    //show specific selected donor data
+    d3.select("#donorSelect").on("change", function(event) {
+      const selectedDonor = event.target.value;
+      currentDonor=selectedDonor;
+      
+      //make legend
+      const legendDivSankey = d3.select("#legend");
+
+      //remove previous legend
+      legendDivSankey.selectAll(".legend-title").remove();
+    legendDivSankey.selectAll(".reset-button").remove();
+
+    // Filter data for this donor
+      const donorData = collapsed.filter(d => d.donor === selectedDonor);
+
+    //get purposes
+    const purposeTotals = d3.rollup(
+      donorData,
+      v => d3.sum(v, d => d.amount),
+      d => d.purpose
+    );
+    const topPurposes = Array.from(purposeTotals)
+      .sort((a, b) => d3.descending(a[1], b[1]))
+      .slice(0, 10)
+      .map(d => d[0]);
+
+      // Add legend title
+        legendDivSankey.append("text")
+        .attr("class", "legend-title")
+        .attr("x", 0)
+        .attr("y", -10)
+        .style("font-weight", "bold")
+        .text("Top "+topPurposes.length+" Purposes for "+currentDonor);
+
+        //add legend reset button
+      legendDivSankey.append("button")
+        .attr("class","reset-button")
+        .text("Reset View")
+        .style("cursor", "pointer")
+        .style("margin-bottom", "8px")
+        .style("margin-left", "5px")
+        .style("font-weight", "bold")
+        .on("click", () => {
+            // Reset link opacity
+            link.attr("stroke-opacity", 0.4);
+
+            // Reset node opacity
+            nodeRects.attr("fill-opacity", 0.9);
+        });  
+      
+    const donorTopData = donorData.filter(d => topPurposes.includes(d.purpose));
+
+    const purposes = [...new Set(donorTopData.map(d => d.purpose))];
+
+      // Build nodes/links
+      const nodes = [];
+      const nodeMap = new Map();
+      function addNode(name, role) {
+        const key = name + " (" + role + ")";
+        if (!nodeMap.has(key)) {
+          nodeMap.set(key, nodes.length);
+          nodes.push({ name: key });
+        }
+        return nodeMap.get(key);
+      }
+
+        // Count nodes for this donor
+        const nodeCount = donorTopData.length;
+        const dynamicHeight = Math.max(600, nodeCount * 20); 
+        const dynamicWidth = Math.max(960, nodeCount*10);
+
+        // Resize SVG
+        sankeySvg.attr("height", dynamicHeight);
+
+        // Update sankey extent
+        sankey.extent([[1, 1], [width, dynamicHeight - 6]]);
+
+
+      const links = [];
+      donorTopData.forEach(d => {
+        const donor = addNode(d.donor, "Donor");
+        const purpose = addNode(d.purpose, "Purpose");
+        const recipient = addNode(d.recipient, "Recipient");
+
+        links.push({ source: donor, target: purpose, value: d.amount, purpose: d.purpose, donor: d.donor, recipient: d.recipient });
+        links.push({ source: purpose, target: recipient, value: d.amount, purpose: d.purpose, donor: d.donor, recipient:d.recipient });
+      });
+
+      
+      // Clear old chart and legend items
+      legendDivSankey.selectAll(".legend-item").remove();
+      sankeySvg.selectAll("*").remove();
+
+      const graph = { nodes, links };
+      sankey(graph);
+
+
+      // Draw links
+      link = sankeySvg.append("g")
+        .selectAll("path")
+        .data(graph.links)
+        .join("path")
+          .attr("class", "link")
+          .attr("d", path)
+          .attr("stroke", d => color(d.purpose))
+          .attr("stroke-width", d => Math.max(1, d.width))
+          .attr("stroke-opacity",0.4);
+
+        //show donor -> recipient and the amount donated on hover
+        link.append("title")
+      .text(d => `${d.donor} → ${d.recipient}\nAmount: $${d.value}`);
+
+      // Draw nodes
+      const node = sankeySvg.append("g")
+        .selectAll("g")
+        .data(graph.nodes)
+        .join("g")
+          .attr("class", "node");
+
+      nodeRects = node.append("rect")
+          .attr("x", d => d.x0)
+          .attr("y", d => d.y0)
+          .attr("height", d => d.y1 - d.y0)
+          .attr("width", d => d.x1 - d.x0)
+          .attr("fill", d => {
+          if (d.name.includes("(Purpose)")) {
+            // strip role suffix to get original purpose name
+            const purposeName = d.name.replace(" (Purpose)", "");
+            return color(purposeName);
+          }
+          return "grey";
+        })
+        .attr("fill-opacity",0.9)
+
+      //add node labels
+      node.append("text")
+        .attr("x", d => d.x0 < width / 2 ? d.x1 + 6 : d.x0 - 6)
+        .attr("y", d => (d.y1 + d.y0) / 2)
+        .attr("dy", "0.35em")
+        .attr("text-anchor", d => d.x0 < width / 2 ? "start" : "end")
+        .text(d => {
+            if (d.name.includes("(Purpose)")) {
+            // strip role suffix to get original purpose name
+            const purposeName = d.name.replace(" (Purpose)", "");
+            return purposeName;
+          }
+          else if (d.name.includes("(Donor)")) {
+            // strip role suffix to get original purpose name
+            const donorName = d.name.replace(" (Donor)", "");
+            return donorName;
+          }
+          else if (d.name.includes("(Recipient)")) {
+            // strip role suffix to get original purpose name
+            const recipientName = d.name.replace(" (Recipient)", "");
+            return recipientName;
+          }
+    });
+
+    //populate legend
+        legendDivSankey.selectAll(".legend-item")
+        .data(purposes)
+        .join("div")
+            .attr("class","legend-item")
+            .style("display", "flex")
+            .style("align-items", "center")
+            .style("margin-bottom", "4px")
+            .style("cursor", "pointer") // make it clickable
+            .on("click", (event, d) => {
+            // highlight flows for this purpose
+                link.attr("stroke-opacity", l => l.purpose === d ? 0.9 : 0.1);
+
+                nodeRects.attr("fill-opacity",  n => {
+                if (n.name.includes("(Purpose)")) {
+                    const purposeName = n.name.replace(" (Purpose)", "");
+                    return purposeName === d ? 0.9 : 0.2;
+                    }
+                    return 0.2; // donors/recipients dimmed
+                });
+                console.log("Clicked purpose:", d);
+                link.each(l => console.log("Link opacity before:", l.purpose));
+
+            })
+            .html(d => `
+            <div style="width:15px;height:15px;background:${color(d)};margin-right:6px;"></div>
+            <span>${d}</span>
+            `);
+    });
+}
+ function sanitizePurpose(p) {
+  return p.replace(/\s+/g, '-')      // replace spaces with dashes
+          .replace(/[()\/]/g, '')      // remove parentheses and /
+          .toLowerCase();            // normalize case
+}
+
+function buildNetwork(data) {
+        radius=35;
+
+        //make legend
+        const legendDivNetwork = d3.select("#networkLegend");
+
+        // Add legend title
+          legendDivNetwork.append("text")
+          .attr("class", "legend-title")
+          .attr("x", 0)
+          .attr("y", -10)
+          .style("font-weight", "bold")
+          .text("Top 10 Purposes for all Donors");
+
+        legendDivNetwork.append("button")
+          .attr("class","reset-button")
+          .text("Reset View")
+          .style("cursor", "pointer")
+          .style("margin-bottom", "8px")
+          .style("margin-left","5px")
+          .style("font-weight", "bold")
+          .on("click", () => {
+              // Reset link opacity
+              link.attr("stroke-opacity", 0.7);
+
+              //reset arrow opacity
+              networkSvg.selectAll("marker path")
+                    .attr("fill-opacity", 0.7);
+
+              // Reset node opacity
+              node.attr("fill-opacity", 0.9);
+
+
+          }); 
+
+        // Clear old network and legend
+        networkSvg.selectAll("*").remove();
+        legendDivNetwork.selectAll(".legend-network").remove();
+
+
+        // Build nodes and links
+        const nodes = Array.from(new Set(data.flatMap(d => [d.donor, d.recipient])))
+                          .map(name => ({ id: name }));
+        const links = data.map(d => ({
+          source: d.donor,
+          target: d.recipient,
+          amount: d.amount,
+          purpose: d.purpose
+        }));
+            const purposes = [...new Set(links.map(d => d.purpose))];
+
+            const color = d3.scaleOrdinal()
+            .domain(purposes)
+            .range(d3.schemePaired);
+
+            // Define all arrow markers
+            purposes.forEach(p => {
+              networkSvg.append("defs").append("marker")
+                .attr("id", `arrow-${sanitizePurpose(p)}`)
+                .attr("viewBox", "0 -5 10 10")
+                .attr("refX", radius + 10)
+                .attr("refY", 0)
+                .attr("markerWidth", 10)
+                .attr("markerHeight", 10)
+                .attr("markerUnits", "userSpaceOnUse")
+                .attr("orient", "auto")
+            .append("path")
+                .attr("d", "M0,-5L10,0L0,5") // simple triangle
+                .attr("fill", "context-stroke");       // arrow color
+            });
+
+
+            // Draw links
+            var link = networkSvg.selectAll("line")
+                .data(links)
+                .enter()
+                .append("line")
+                .attr("stroke-width", d => Math.sqrt(d.amount) / 7000) //stroke thickness based on amount
+                .attr("stroke", d => color(d.purpose))
+                .attr("marker-end", d => `url(#arrow-${sanitizePurpose(d.purpose)})`)
+                .attr("stroke-opacity",0.7);
+
+            // Draw nodes
+            var node = networkSvg.selectAll("circle")
+                .data(nodes)
+                .enter()
+                .append("circle")
+                .attr("r", radius)
+                .style("fill", "grey")
+                .attr("fill-opacity",0.9);
+
+            
+            // feed nodes and links into forceSimulation
+            var simulation = d3.forceSimulation(nodes)
+                .force("link", d3.forceLink(links).id(d => d.id))
+                .force("charge", d3.forceManyBody().strength(-(2*(width+height))))
+                .force("center", d3.forceCenter((width) / 2, (height) / 2)) // account for margins                
+            simulation.stop();
+            for (let i = 0; i < 300; i++) simulation.tick();
+
+
+            // Compute extents of node positions
+            const xExtent = d3.extent(nodes, d => d.x);
+            const yExtent = d3.extent(nodes, d => d.y);
+
+            // Add padding
+            const padding = 100;
+
+            // Update SVG size to fit all nodes
+            d3.select("#network")
+              .attr("width", xExtent[1] - xExtent[0] + padding)
+              .attr("height", yExtent[1] - yExtent[0] + padding);
+
+            // Shift nodes
+            nodes.forEach(d => {
+              d.x = d.x - xExtent[0] + padding/2;
+              d.y = d.y - yExtent[0] + padding/2;
+            });
+
+            //add node labels
+             var labels = networkSvg.selectAll("foreignObject")
+            .data(nodes)
+            .enter()
+            .append("foreignObject")
+            .attr("x", d => d.x - radius)
+            .attr("y", d => d.y - radius)
+            .attr("width", radius * 2)
+            .attr("height", radius * 2)
+
+        labels.append("xhtml:div")
+            .style("width","100%")
+            .style("height", "100%")
+            .style("display", "flex")
+            .style("align-items", "center")
+            .style("justify-content", "center")
+            .style("text-align", "center")
+            .style("font-size", radius/4 + "px")
+            .style("color", "white")
+            .style("word-wrap", "break-word")
+            .text(d => d.id);
+
+            // draw network:
+           
+                link
+                .attr("x1", d => d.source.x)
+                .attr("y1", d => d.source.y)
+                .attr("x2", d => d.target.x)
+                .attr("y2", d => d.target.y);
+
+                node
+                .attr("cx", d => d.x)
+                .attr("cy", d => d.y);
+
+        //populate legend
+        legendDivNetwork.selectAll(".legend-network")
+        .data(purposes)
+        .join("div")
+            .attr("class","legend-network")
+            .style("display", "flex")
+            .style("align-items", "center")
+            .style("margin-bottom", "4px")
+            .style("cursor", "pointer") // make it clickable
+            .on("click", (event, d) => {
+            // highlight flows for this purpose
+                link.attr("stroke-opacity", l => l.purpose === d ? 0.9 : 0.03);
+
+              // hide arrowheads by setting marker path opacity
+                networkSvg.selectAll("marker path")
+                  .attr("fill-opacity", function() {
+                    const markerId = d3.select(this.parentNode).attr("id");
+                    return markerId === `arrow-${sanitizePurpose(d)}` ? 0.9 : 0;
+                  });
+
+                node.attr("fill-opacity",  n => {
+                if (n.name.includes("(Purpose)")) {
+                    const purposeName = n.name.replace(" (Purpose)", "");
+                    return purposeName === d ? 0.9 : 0.2;
+                    }
+                    return 0.2; 
+                });
+                console.log("Clicked purpose:", d);
+                link.each(l => console.log("Link opacity before:", l.purpose));
+
+            })
+            .html(d => `
+            <div style="width:15px;height:15px;background:${color(d)};margin-right:6px;"></div>
+            <span>${d}</span>
+            `);
+}
+});
+
+</script>
+</body>

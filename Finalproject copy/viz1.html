@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>AidData Chord Diagram — Top 20 Donors × Top 10 Recipients</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  body { font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 10px; background:#fafafa; }
+  svg { display: block; margin: 0 auto; }
+  .group-label { font-size: 11px; pointer-events: none; }
+  .tooltip {
+    position: absolute;
+    background: white;
+    border: 1px solid #bbb;
+    padding: 8px;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    pointer-events: none;
+    font-size: 13px;
+  }
+  .fade { opacity: 0.08; }
+</style>
+</head>
+<body>
+
+<button id = "mainpage" onclick="window.location.href = 'mainpage.html'">Back to Main page</button>
+
+<h2 style="text-align:center">AidData — Chord Diagram (Top 20 donors → Top 10 recipients)</h2>
+<div id="viz"></div>
+<div id="tooltip" class="tooltip" style="display:none;"></div>
+
+<script>
+const DONOR_COUNT = 20;
+const RECIPIENT_COUNT = 10;
+const CSV_FILE = "AidData.csv";
+const width = 1000;
+const height = 800;
+const outerRadius = Math.min(width, height) * 0.36;
+const innerRadius = outerRadius - 24;
+
+const money = d3.format(",.0f");
+
+//Load CSV
+d3.csv(CSV_FILE, d => ({
+  donor: d.donor,
+  recipient: d.recipient,
+  year: +d.year,
+  purpose_code: d.coalesced_purpose_code,
+  purpose_name: d.coalesced_purpose_name,
+  amount: +d.commitment_amount_usd_constant_sum
+})).then(rows => {
+  const data = rows.filter(r => !isNaN(r.amount) && r.amount > 0);
+
+  //Totals by donor and by recipient
+  const donorTotals = d3.rollups(data, v => d3.sum(v, d => d.amount), d => d.donor)
+    .map(([k,v]) => ({name:k, total:v}))
+    .sort((a,b) => d3.descending(a.total, b.total));
+
+  const recipientTotals = d3.rollups(data, v => d3.sum(v, d => d.amount), d => d.recipient)
+    .map(([k,v]) => ({name:k, total:v}))
+    .sort((a,b) => d3.descending(a.total, b.total));
+
+  //Take top donors, and recipients 
+  const topDonors = donorTotals.slice(0, DONOR_COUNT).map(d => d.name);
+  const topRecipients = [];
+  for (let i=0; i<recipientTotals.length && topRecipients.length < RECIPIENT_COUNT; i++){
+    const name = recipientTotals[i].name;
+    if (!topDonors.includes(name)) topRecipients.push(name);
+  }
+
+  if (topRecipients.length < RECIPIENT_COUNT) {
+    const needed = RECIPIENT_COUNT - topRecipients.length;
+    recipientTotals.forEach(r => {
+      if (topRecipients.length >= RECIPIENT_COUNT) return;
+      if (!topRecipients.includes(r.name)) topRecipients.push(r.name);
+    });
+  }
+
+  //Final groups array
+  const groups = topDonors.concat(topRecipients);
+
+  const nameToIndex = new Map();
+  groups.forEach((n,i) => nameToIndex.set(n,i));
+
+  const n = groups.length;
+  const matrix = Array.from({length:n}, () => new Array(n).fill(0));
+
+  //Fill matrix
+  data.forEach(d => {
+    const s = nameToIndex.get(d.donor);
+    const t = nameToIndex.get(d.recipient);
+    if (s !== undefined && t !== undefined) {
+      matrix[s][t] += d.amount;
+    }
+  });
+
+  const groupTotals = groups.map((name, i) => {
+    const outgoing = d3.sum(matrix[i]);
+    const incoming = d3.sum(matrix.map(row => row[i]));
+    return {name, index:i, outgoing, incoming};
+  });
+
+  //Colors
+  const donorColor = d3.scaleOrdinal()
+    .domain(d3.range(0, topDonors.length))
+    .range(d3.schemeCategory10.concat(d3.schemePaired));
+  const recipientColor = d3.scaleOrdinal()
+    .domain(d3.range(topDonors.length, n))
+    .range(d3.schemeSet2.concat(d3.schemePastel1));
+
+  function colorForIndex(i) {
+    if (i < topDonors.length) return donorColor(i);
+    return recipientColor(i - topDonors.length);
+  }
+
+  renderChord(matrix, groups, colorForIndex, groupTotals);
+});
+
+function renderChord(matrix, groups, colorForIndex, groupTotals) {
+  const svg = d3.select("#viz")
+    .append("svg")
+    .attr("width", width)
+    .attr("height", height);
+
+  const g = svg.append("g")
+    .attr("transform", `translate(${width/2},${height/2 + 20})`);
+
+  const chord = d3.chord()
+      .padAngle(0.03)
+      .sortSubgroups(d3.descending)
+      (matrix);
+
+  const arc = d3.arc()
+      .innerRadius(innerRadius)
+      .outerRadius(outerRadius);
+
+  const ribbon = d3.ribbon()
+      .radius(innerRadius - 2);
+
+  //Groups 
+  const group = g.append("g")
+    .selectAll("g")
+    .data(chord.groups)
+    .join("g");
+
+  group.append("path")
+    .attr("class", "group-arc")
+    .attr("id", d => "g" + d.index)
+    .style("fill", d => colorForIndex(d.index))
+    .style("stroke", d => d3.rgb(colorForIndex(d.index)).darker(0.6))
+    .attr("d", arc)
+    .on("mouseover", (event, d) => fade(opacity = 0.06, d.index))
+    .on("mouseout", (event, d) => fade(opacity = 1, null))
+    .on("mousemove", (event,d) => showGroupTooltip(event, d.index));
+
+  //Labels
+  group.append("text")
+    .each(d => { d.angle = (d.startAngle + d.endAngle) / 2; })
+    .attr("dy", ".35em")
+    .attr("class", "group-label")
+    .attr("transform", d => {
+  const angle = (d.startAngle + d.endAngle) / 2 * 180 / Math.PI - 90;
+  const rotate = angle;
+  const translate = innerRadius + 60;
+  return `rotate(${rotate}) translate(${translate}) ${angle > 90 ? "rotate(180)" : ""}`;
+})
+    .attr("text-anchor", d => {
+      const ang = (d.startAngle + d.endAngle) / 2 * 180 / Math.PI - 90;
+      return ang > 90 ? "end" : "start";
+    })
+    .text(d => shortenLabel(groups[d.index]));
+
+  //Connections
+  const ribbons = g.append("g")
+    .attr("fill-opacity", 0.75)
+    .selectAll("path")
+    .data(chord)
+    .join("path")
+    .attr("d", ribbon)
+    .style("fill", d => colorForIndex(d.source.index))
+    .style("stroke", d => d3.rgb(colorForIndex(d.source.index)).darker(0.6))
+    .on("mouseover", (event,d) => {
+      d3.select(event.currentTarget).attr("fill-opacity", 1);
+      showRibbonTooltip(event, d);
+      fade(0.08, null, d);
+    })
+    .on("mouseout", (event,d) => {
+      d3.select(event.currentTarget).attr("fill-opacity", 0.75);
+      hideTooltip();
+      fade(1, null);
+    });
+
+  //Center title with total sum
+  const totalSum = d3.sum(matrix.flat());
+  g.append("text")
+  .attr("text-anchor", "middle")
+  .attr("dy", innerRadius + 40)
+  .style("font-size","13px")
+  .text("Total shown: $" + d3.format(",.0f")(totalSum));
+
+
+  const tooltip = d3.select("#tooltip");
+
+  function showGroupTooltip(event, index) {
+    const gt = groupTotals[index];
+    const html = `<strong>${escapeHtml(gt.name)}</strong><br/>
+      Outgoing: $${money(gt.outgoing)}<br/>
+      Incoming: $${money(gt.incoming)}`;
+    tooltip.style("display","block")
+      .html(html)
+      .style("left",(event.pageX + 12) + "px")
+      .style("top",(event.pageY + 12) + "px");
+  }
+
+  function showRibbonTooltip(event, d) {
+    const donor = groups[d.source.index];
+    const recipient = groups[d.target.index];
+    const amount = d.source.value; 
+    const html = `<strong>${escapeHtml(donor)} → ${escapeHtml(recipient)}</strong><br/>$${money(amount)}`;
+    tooltip.style("display","block")
+      .html(html)
+      .style("left",(event.pageX + 12) + "px")
+      .style("top",(event.pageY + 12) + "px");
+  }
+
+  function hideTooltip() {
+    tooltip.style("display","none");
+  }
+
+  function fade(opacity, index, highlightRibbon) {
+    //groups
+    g.selectAll(".group-arc")
+      .transition().duration(200)
+      .style("opacity", d => (index === null ? 1 : (d.index === index ? 1 : opacity)));
+
+    //ribbons
+    g.selectAll("path")
+      .filter(function(d){
+        return d.source !== undefined;
+      })
+      .transition().duration(200)
+      .style("opacity", d => {
+        if (highlightRibbon && d === highlightRibbon) return 1;
+        if (index === null) return 1;
+        return (d.source.index === index || d.target.index === index) ? 1 : opacity;
+      });
+  }
+
+  function shortenLabel(s){
+    if (s.length > 28) return s.slice(0,25) + "...";
+    return s;
+  }
+  function escapeHtml(s){
+    return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  }
+}
+
+</script>
+</body>
+</html>

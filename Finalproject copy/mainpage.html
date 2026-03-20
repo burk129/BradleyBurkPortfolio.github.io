@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heatmap Matrix</title>
+
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/seedrandom/3.0.5/seedrandom.min.js"></script>
+</head>
+
+<style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding-top: 80px;
+            background: #f5f7fa;
+        }
+
+        .bubble-container {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+        }
+
+        .bubble {
+            width: 150px;
+            height: 150px;
+            background: #4a90e2;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.25s;
+            border: none;
+        }
+
+        .bubble:hover {
+            background: #357ABD;
+            transform: scale(1.08);
+        }
+
+        .bubble:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .description {
+            margin-top: 12px;
+            font-size: 14px;
+            color: #444;
+            text-align: center;   /* ← This ensures perfect centering */
+            max-width: 160px;     /* Optional: matches bubble width */
+        }
+    </style>
+
+<body>
+
+    <h1>Global Aid Reception Versus Donation: Top 10 Recipients, Top 20 Donors, and the Purpose Behind It</h1>
+
+    <div class="bubble-container">
+
+    <div class="bubble-wrapper">
+        <button class="bubble" onclick="window.location.href='viz1.html'">
+            Visualization 1
+        </button>
+        <div class="description">
+            Illustrates the amount of aid that is given versus received, 
+            highlighting the most frequent interactions among the top 20 donor countries and top 10 recipient countries
+        </div>
+    </div>
+
+    <div class="bubble-wrapper">
+        <button class="bubble" onclick="window.location.href='viz2.html'">
+            Visualization 2
+        </button>
+        <div class="description">
+            Analyze the purposes of country interaction that are most
+            prevalent 
+        </div>
+    </div>
+
+    <div class="bubble-wrapper">
+        <button class="bubble" onclick="window.location.href='viz3.html'">
+            Visualization 3
+        </button>
+        <div class="description">
+            Demonstrates the patterns of global aid interactions overtime between the top 20 donors and top 10 recipients 
+        </div>
+    </div>
+
+    </div>
+
+</body>
+
+</html>
